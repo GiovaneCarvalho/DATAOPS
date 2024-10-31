@@ -1,43 +1,38 @@
-FROM python::3.11.5-slim-bookworm
+# Use a Python base image (Python 3.11 in this case)
+FROM python:3.11-slim
 
-# https://python-poetry.org/docs#ci-recommendations
-ENV POETRY_VERSION=1.2.0
-ENV POETRY_HOME=/opt/poetry
-ENV POETRY_VENV=/opt/poetry-venv
+# Set environment variables
+ENV POETRY_VERSION=1.5.1 \
+    POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1
 
-# Tell Poetry where to place its cache and virtual environment
-ENV POETRY_CACHE_DIR=/opt/.cache
-
-# Create stage for Poetry installation
-FROM python-base as poetry-base
-
-# Creating a virtual environment just for poetry and install it with pip
-RUN python3 -m venv $POETRY_VENV \
-    && $POETRY_VENV/bin/pip install -U pip setuptools \
-    && $POETRY_VENV/bin/pip install poetry==${POETRY_VERSION}
-
-# Create a new stage from the base python image
-FROM python-base as example-app
-
-# Copy Poetry to app image
-COPY --from=poetry-base ${POETRY_VENV} ${POETRY_VENV}
+# Install dependencies needed for Poetry and the application
+RUN apt-get update \
+    && apt-get install -y curl build-essential \
+    && curl -sSL https://install.python-poetry.org | python3 - \
+    && rm -rf /var/lib/apt/lists/*
 
 # Add Poetry to PATH
-ENV PATH="${PATH}:${POETRY_VENV}/bin"
+ENV PATH="$POETRY_HOME/bin:$PATH"
 
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy Dependencies
-COPY poetry.lock pyproject.toml ./
+# Copy pyproject.toml and poetry.lock into the container
+COPY pyproject.toml poetry.lock /app/
 
-# [OPTIONAL] Validate the project is properly configured
-RUN poetry check
+# Install dependencies without development dependencies (omit --without dev if you want dev dependencies)
+RUN poetry install --no-root --no-cache --without dev
 
-# Install Dependencies
-RUN poetry install --no-interaction --no-cache --without dev
+# Copy the application code
+COPY . /app
 
-COPY ./app.py /app/app.py
+# Set the working directory for the application
+WORKDIR /app
 
-WORKDIR /app/aap.py
+# Expose the default Streamlit port
+EXPOSE 8501
 
-ENTRYPOINT [ "streamlit",'run','app.py' ]
+# Specify the entry point for Streamlit
+ENTRYPOINT ["streamlit", "run", "app.py"]
