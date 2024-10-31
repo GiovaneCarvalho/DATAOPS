@@ -1,38 +1,27 @@
-# Use a Python base image (Python 3.11 in this case)
-FROM python:3.11-slim
+FROM python:3.11-buster as builder
 
-# Set environment variables
-ENV POETRY_VERSION=1.5.1 \
-    POETRY_HOME="/opt/poetry" \
-    POETRY_VIRTUALENVS_CREATE=false \
-    POETRY_NO_INTERACTION=1
+RUN pip install poetry==1.4.2
 
-# Install dependencies needed for Poetry and the application
-RUN apt-get update \
-    && apt-get install -y curl build-essential \
-    && curl -sSL https://install.python-poetry.org | python3 - \
-    && rm -rf /var/lib/apt/lists/*
+ENV POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_IN_PROJECT=1 \
+    POETRY_VIRTUALENVS_CREATE=1 \
+    POETRY_CACHE_DIR=/tmp/poetry_cache
 
-# Add Poetry to PATH
-ENV PATH="$POETRY_HOME/bin:$PATH"
-
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy pyproject.toml and poetry.lock into the container
-COPY pyproject.toml poetry.lock /app/
+COPY pyproject.toml poetry.lock ./
+RUN touch README.md
 
-# Install dependencies without development dependencies (omit --without dev if you want dev dependencies)
-RUN poetry install --no-root --no-cache --without dev
+RUN --mount=type=cache,target=$POETRY_CACHE_DIR poetry install --without dev --no-root
 
+FROM python:3.11-slim-buster as runtime
+
+ENV VIRTUAL_ENV=/app/.venv \
+    PATH="/app/.venv/bin:$PATH"
+
+COPY --from=builder ${VIRTUAL_ENV} ${VIRTUAL_ENV}
 # Copy the application code
 COPY . /app
-
-# Set the working directory for the application
-WORKDIR /app
-
-# Expose the default Streamlit port
-EXPOSE 8501
 
 # Specify the entry point for Streamlit
 ENTRYPOINT ["streamlit", "run", "app.py"]
